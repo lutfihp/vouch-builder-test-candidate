@@ -25,8 +25,11 @@ const bodySchema = z.object({
   nightLogs: z.string().optional(),
 });
 
-export const generateHandover = (input: z.infer<typeof bodySchema>) => {
-  const { facts, topLevelFlags } = buildFacts(input.hotelId, input.hotelOffset, input.events as Event[]);
+export const generateHandover = async (input: z.infer<typeof bodySchema>) => {
+  const { facts, topLevelFlags } = await buildFacts(
+    input.hotelId, input.hotelOffset, input.events as Event[],
+    input.nightLogs, 2026
+  );
   const issues = applyUrgency(reconcile(input.hotelId, facts), input.asOfShift);
   return buildHandover(input.hotelId, input.asOfShift, issues, topLevelFlags);
 };
@@ -41,7 +44,7 @@ export const buildServer = () => {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_body", issues: parsed.error.issues });
     }
-    return generateHandover(parsed.data);
+    return await generateHandover(parsed.data);
   });
 
   app.get("/handover.html", async (req, reply) => {
@@ -49,7 +52,7 @@ export const buildServer = () => {
     const asOfShift = (req.query as any)?.asOfShift ?? "2026-05-30";
     const raw = JSON.parse(await readFile("data/events.json", "utf8")) as any;
     const nightLogs = await readFile("data/night-logs.md", "utf8").catch(() => undefined);
-    const h = generateHandover({
+    const h = await generateHandover({
       hotelId: raw.hotel.id,
       hotelOffset: raw.hotel.timezone,
       asOfShift,

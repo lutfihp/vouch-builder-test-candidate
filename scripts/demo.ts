@@ -13,7 +13,8 @@ const main = async () => {
   };
   const hotelId = raw.hotel.id;
   const offset = raw.hotel.timezone;
-  const { facts, topLevelFlags } = buildFacts(hotelId, offset, raw.events);
+  const nightLogs = await readFile("data/night-logs.md", "utf8").catch(() => undefined);
+  const { facts, topLevelFlags } = await buildFacts(hotelId, offset, raw.events, nightLogs, 2026);
   const issues = applyUrgency(reconcile(hotelId, facts), argShift);
   const handover = buildHandover(hotelId, argShift, issues, topLevelFlags);
   process.stdout.write(JSON.stringify(handover, null, 2) + "\n");

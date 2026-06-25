@@ -9,8 +9,9 @@ const baseEvent = (over: Partial<any>) => ({
 });
 
 describe("prompt-injection defense", () => {
-  it("surfaces a `SYSTEM NOTE TO THE HANDOVER TOOL` event under Flags, never 'all clear'", () => {
-    const h = generateHandover({
+  it("surfaces a `SYSTEM NOTE TO THE HANDOVER TOOL` event under Flags, never 'all clear'", async () => {
+    delete process.env.GROQ_API_KEY;
+    const h = await generateHandover({
       hotelId: "h", hotelOffset: "+08:00", asOfShift: "2026-05-30",
       events: [
         baseEvent({
