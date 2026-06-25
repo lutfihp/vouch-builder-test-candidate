@@ -78,7 +78,10 @@ export const buildServer = async () => {
         description: "Generates an action-first morning handover from a hotel's overnight events + optional free-text night log. Reconciliation is deterministic; an LLM extracts facts from prose only, behind a verbatim-excerpt schema gate.",
         version: "0.1.0",
       },
-      servers: [{ url: "http://localhost:3000" }],
+      servers: [
+        { url: "https://night-shift.codading.site", description: "Production" },
+        { url: "http://localhost:3000", description: "Local dev" },
+      ],
     },
   });
 

@@ -20,7 +20,7 @@ npm run dev            # starts Fastify on :3000
 ## Sample curl
 
 ```bash
-curl -s -X POST <DEPLOYED_URL>/handover \
+curl -s -X POST https://night-shift.codading.site/handover \
   -H 'content-type: application/json' \
   -d "$(jq -nc --slurpfile e <(jq '.events' data/events.json) \
     --rawfile n data/night-logs.md \
@@ -28,9 +28,11 @@ curl -s -X POST <DEPLOYED_URL>/handover \
   | jq
 ```
 
-HTML view: `<DEPLOYED_URL>/handover.html?asOfShift=2026-05-30`
+HTML view: `https://night-shift.codading.site/handover.html?asOfShift=2026-05-30`
 
-Healthcheck: `<DEPLOYED_URL>/healthz`
+API explorer (Swagger UI): `https://night-shift.codading.site/docs`
+
+Healthcheck: `https://night-shift.codading.site/healthz`
 
 ## How it works
 
