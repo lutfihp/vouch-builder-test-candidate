@@ -44,6 +44,22 @@ export const buildServer = () => {
     return generateHandover(parsed.data);
   });
 
+  app.get("/handover.html", async (req, reply) => {
+    const { readFile } = await import("node:fs/promises");
+    const asOfShift = (req.query as any)?.asOfShift ?? "2026-05-30";
+    const raw = JSON.parse(await readFile("data/events.json", "utf8")) as any;
+    const nightLogs = await readFile("data/night-logs.md", "utf8").catch(() => undefined);
+    const h = generateHandover({
+      hotelId: raw.hotel.id,
+      hotelOffset: raw.hotel.timezone,
+      asOfShift,
+      events: raw.events,
+      nightLogs,
+    });
+    const { renderHandoverHtml } = await import("./render/html.js");
+    reply.type("text/html").send(renderHandoverHtml(h));
+  });
+
   return app;
 };
 
