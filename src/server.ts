@@ -1,4 +1,7 @@
 import Fastify from "fastify";
+import swagger from "@fastify/swagger";
+import swaggerUi from "@fastify/swagger-ui";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { logger } from "./log/logger.js";
 import { buildFacts } from "./facts/build.js";
@@ -34,12 +37,70 @@ export const generateHandover = async (input: z.infer<typeof bodySchema>) => {
   return buildHandover(input.hotelId, input.asOfShift, issues, topLevelFlags);
 };
 
-export const buildServer = () => {
-  const app = Fastify({ logger });
+// JSON Schema describes the API for swagger only; real validation happens via Zod inside the handler.
+const handoverRequestSchema = {
+  type: "object",
+  required: ["hotelId", "asOfShift", "events"],
+  properties: {
+    hotelId: { type: "string", example: "lumen-sg" },
+    hotelOffset: { type: "string", example: "+08:00", description: "Hotel TZ offset, e.g. +08:00" },
+    asOfShift: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", example: "2026-05-30", description: "Morning-of date of the shift to generate the handover for" },
+    events: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "timestamp", "type", "room", "guest", "description", "status"],
+        properties: {
+          id: { type: "string", example: "evt_0007" },
+          timestamp: { type: "string", example: "2026-05-27T00:15:00+08:00" },
+          type: { type: "string", example: "deposit_issue" },
+          room: { type: ["string", "null"], example: "309" },
+          guest: { type: ["string", "null"], example: "Jaydeep Suthkumar" },
+          description: { type: "string", example: "Card declined for SGD 100 deposit." },
+          status: { type: "string", enum: ["resolved", "unresolved", "pending"] },
+        },
+      },
+    },
+    nightLogs: { type: "string", description: "Free-text night-log markdown. Optional. Must contain a '## Night of ... → morning ...' heading.", example: "## Night of Wed 27 May → morning Thu 28 May\n\n- 309 — still no deposit on file." },
+  },
+};
 
-  app.get("/healthz", async () => ({ ok: true }));
+export const buildServer = async () => {
+  const app = Fastify({
+    logger,
+    ajv: { customOptions: { keywords: ["example"] } },
+  });
 
-  app.post("/handover", async (req, reply) => {
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: "Vouch Night-Shift Handover",
+        description: "Generates an action-first morning handover from a hotel's overnight events + optional free-text night log. Reconciliation is deterministic; an LLM extracts facts from prose only, behind a verbatim-excerpt schema gate.",
+        version: "0.1.0",
+      },
+      servers: [{ url: "http://localhost:3000" }],
+    },
+  });
+
+  await app.register(swaggerUi, {
+    routePrefix: "/docs",
+    uiConfig: { docExpansion: "list", deepLinking: false },
+  });
+
+  app.get("/healthz", {
+    schema: {
+      summary: "Healthcheck",
+      response: { 200: { type: "object", properties: { ok: { type: "boolean" } } } },
+    },
+  }, async () => ({ ok: true }));
+
+  app.post("/handover", {
+    schema: {
+      summary: "Generate a morning handover",
+      description: "Ingests structured events + optional prose night log, reconciles issues across shifts, returns an action-first handover with evidence-linked items.",
+      body: handoverRequestSchema,
+    },
+  }, async (req, reply) => {
     const parsed = bodySchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_body", issues: parsed.error.issues });
@@ -47,7 +108,15 @@ export const buildServer = () => {
     return await generateHandover(parsed.data);
   });
 
-  app.get("/handover.html", async (req, reply) => {
+  app.get("/handover.html", {
+    schema: {
+      summary: "HTML view of the bundled sample handover",
+      querystring: {
+        type: "object",
+        properties: { asOfShift: { type: "string", example: "2026-05-30" } },
+      },
+    },
+  }, async (req, reply) => {
     const { readFile } = await import("node:fs/promises");
     const asOfShift = (req.query as any)?.asOfShift ?? "2026-05-30";
     const raw = JSON.parse(await readFile("data/events.json", "utf8")) as any;
@@ -66,10 +135,18 @@ export const buildServer = () => {
   return app;
 };
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+const isMain = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
+  }
+})();
+
 if (isMain) {
   const port = Number(process.env.PORT ?? 3000);
-  buildServer().listen({ port, host: "0.0.0.0" }).catch((err) => {
+  buildServer().then((app) => app.listen({ port, host: "0.0.0.0" })).catch((err) => {
     console.error(err);
     process.exit(1);
   });

@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fastify/swagger": "^8.15.0",
+    "@fastify/swagger-ui": "^4.2.0",
     "fastify": "^4.28.1",
     "groq-sdk": "^0.7.0",
     "pino": "^9.3.2",
