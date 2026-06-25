@@ -13,9 +13,9 @@ const main = async () => {
   };
   const hotelId = raw.hotel.id;
   const offset = raw.hotel.timezone;
-  const facts = buildFacts(hotelId, offset, raw.events);
+  const { facts, topLevelFlags } = buildFacts(hotelId, offset, raw.events);
   const issues = applyUrgency(reconcile(hotelId, facts), argShift);
-  const handover = buildHandover(hotelId, argShift, issues);
+  const handover = buildHandover(hotelId, argShift, issues, topLevelFlags);
   process.stdout.write(JSON.stringify(handover, null, 2) + "\n");
 };
 

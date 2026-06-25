@@ -1,6 +1,7 @@
-import type { Event, Fact, FactKind } from "../types.js";
+import type { Event, Fact, FactKind, Flag } from "../types.js";
 import type { Topic } from "../topics.js";
 import { shiftIdForTimestamp } from "../reconcile/shift.js";
+import { logDecision } from "../log/logger.js";
 
 const KIND_BY_STATUS: Record<Event["status"], FactKind> = {
   resolved: "resolve",
@@ -8,8 +9,6 @@ const KIND_BY_STATUS: Record<Event["status"], FactKind> = {
   pending: "open",
 };
 
-// Maps the heterogenous event.type strings to our closed Topic vocab.
-// Anything not matched falls through to keyword inference, then "other".
 const TYPE_TO_TOPIC: Record<string, Topic> = {
   check_in: "check_in",
   check_in_issue: "check_in",
@@ -39,25 +38,57 @@ const inferTopic = (e: Event): Topic => {
   return "other";
 };
 
+const INJECTION_PATTERNS = [
+  /ignore\s+(all\s+)?(other\s+)?(items|instructions|previous)/i,
+  /system\s+note\s+to\s+the\s+(handover|tool|model|ai)/i,
+  /report\s+the\s+night\s+as\s+all\s+clear/i,
+  /mark\s+it\s+approved/i,
+];
+
+const isInjectionAttempt = (e: Event): boolean =>
+  e.type === "guest_message" && INJECTION_PATTERNS.some((re) => re.test(e.description));
+
+export type EventIngestResult = { facts: Fact[]; injectionFlags: Flag[] };
+
 export const eventsToFacts = (
   hotelId: string,
   hotelOffset: string,
   events: Event[]
-): Fact[] =>
-  events.map((e) => {
-    const topic = inferTopic(e);
+): EventIngestResult => {
+  const facts: Fact[] = [];
+  const injectionFlags: Flag[] = [];
+
+  for (const e of events) {
+    const injection = isInjectionAttempt(e);
+    const topic: Topic = injection ? "guest_message" : inferTopic(e);
+    const kind: FactKind = injection ? "info" : KIND_BY_STATUS[e.status];
     const shiftId = shiftIdForTimestamp(e.timestamp, hotelOffset);
-    return {
+
+    facts.push({
       id: `fact_${e.id}`,
-      hotelId,
-      shiftId,
+      hotelId, shiftId,
       timestamp: e.timestamp,
       room: e.room ?? undefined,
       guest: e.guest ?? undefined,
-      topic,
-      kind: KIND_BY_STATUS[e.status],
+      topic, kind,
       summary: e.description,
       evidence: [{ source: "event", eventId: e.id }],
       confidence: "high",
-    };
-  });
+    });
+
+    if (injection) {
+      injectionFlags.push({
+        kind: "prompt_injection_attempt",
+        reason: "guest message contains instructions targeted at automation",
+        evidence: [{ source: "event", eventId: e.id }],
+      });
+      logDecision({
+        hotelId, shiftId,
+        decision: "flag_raised",
+        reason: `prompt_injection_attempt in event ${e.id}`,
+      });
+    }
+  }
+
+  return { facts, injectionFlags };
+};
